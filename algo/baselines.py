@@ -1,9 +1,11 @@
 from pcmdp.simulator.passenger import generate_arrival_distribution
 from pcmdp.env import ElevatorEnv
 from rich.pretty import pprint
+from IPython.display import clear_output
+from time import sleep
 
 
-def random_policy(env: ElevatorEnv):
+def random_policy(env):
     n_episodes = 10
     
     for episode in range(n_episodes):
@@ -20,11 +22,12 @@ def random_policy(env: ElevatorEnv):
             pprint(f"Episode: {episode}, Step: {info['current_time']}, Action: {action}, Reward: {reward}, Cumulative Reward: {cumulated_reward}")
 
 
-def longest_queue_first(env: ElevatorEnv):
+def longest_queue_first(env):
     n_episodes = 1
     
     for episode in range(n_episodes):
         obs, info = env.reset()
+        
         done = False
         cumulated_reward = 0
         
@@ -58,3 +61,4 @@ def longest_queue_first(env: ElevatorEnv):
                    f"Reward: {reward}, Cumulative Reward: {cumulated_reward}, "
                    f"Current Pos: {obs['current_position']}, Passengers: {obs['n_passangers']}, "
                    f"Queues: {obs['floor_queues']}")
+            

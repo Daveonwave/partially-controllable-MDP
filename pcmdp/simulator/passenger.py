@@ -25,6 +25,23 @@ def generate_arrival_distribution(lambd: float, total_time: int, goal_floor: int
     return person_list
 
 
+def generate_generic_passengers(n: int, global_goal_floor: int = None) -> list:
+    """
+    Generate a list of generic passengers.
+
+    :param n: The number of passengers to generate.
+    :param global_goal_floor: The goal floor for all passengers (if specified).
+    :return: A list of Passenger instances.
+    """
+    person_list = []
+    
+    for i in range(n):
+        person = Passenger(_id=-i, arrival_time=-1, goal_floor=np.random.randint(0, 4) if global_goal_floor is None else global_goal_floor)
+        person_list.append(person)
+    
+    return person_list
+
+
 class Passenger:
     def __init__(self, _id:int, arrival_time:int, goal_floor:int):
         """
@@ -47,18 +64,19 @@ class Passenger:
     @property
     def id(self):
         """
-        Return the ID of the queue.
+        Return the ID of t.
         """
         return self._id
         
         
 class FloorQueue:
-    def __init__(self, floor:int, max_waiting:int = 5):
+    def __init__(self, floor:int, max_queue_length:int = 5, max_arrivals:int = 5):
         """
         Initialize a FloorQueue instance.
         """
         self.floor = floor
-        self.max_waiting = max_waiting
+        self.max_queue_length = max_queue_length
+        self.max_arrivals = max_arrivals
         
         self.waitings = []
         self.futures = []
@@ -83,6 +101,15 @@ class FloorQueue:
         self.waitings = []
         self.futures = []
         self.arrivals = {}
+        
+    def set_queue(self, queue: list):
+        """
+        Set the queue for the floor.
+
+        :param queue: A list of Passenger instances.
+        """
+        assert len(queue) <= self.max_queue_length, "Queue length exceeds maximum limit."
+        self.waitings = queue
     
     def set_arrivals(self, arrivals: list):
         """
@@ -92,16 +119,22 @@ class FloorQueue:
         """
         times = set([person.arrival_time for person in arrivals])
         self.arrivals = {time:[person for person in arrivals if person.arrival_time == time] for time in times}
+        
+        # Pop elements if sometime they are more than max_arrivals
+        for time in self.arrivals.keys():
+            if len(self.arrivals[time]) > self.max_arrivals:
+                self.arrivals[time] = self.arrivals[time][:self.max_arrivals]
+                print("POPPED ELEMENTS")
                 
     def update_waitings(self):
         """
         Update the queue by moving passengers from the futures list to the waiting list.
         """
         for i, _ in enumerate(self.futures):
-            if len(self) >= self.max_waiting:
+            if len(self) >= self.max_queue_length:
                 break
             self.waitings.append(self.futures.pop(i))
-            print(f"Queue {self.floor}: passenger {self.waitings[-1].id} in queue at {self.waitings[-1].arrival_time} seconds")
+            #print(f"Queue {self.floor}: passenger {self.waitings[-1].id} in queue at {self.waitings[-1].arrival_time} seconds")
     
         self.futures = []
                 
