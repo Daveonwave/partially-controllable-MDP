@@ -1,0 +1,21 @@
+elevator:
+  min_floor: 0
+  max_floor: 2
+  max_capacity: 2
+  movement_speed: 3.0
+  floor_height: 3
+
+floors:
+  max_arrivals: 2
+  max_queue_length: 2
+  lambda_min: 0.1 #0.01
+  lambda_max: 0.2 #0.1
+
+horizon: 300
+timestep: 1
+
+goal_floor: 0
+init_elevator_pos: null
+random_init_state: False
+delivery_reward: 10.0
+waiting_penalty: -1.0

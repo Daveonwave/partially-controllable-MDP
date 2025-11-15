@@ -1,11 +1,22 @@
 import numpy as np
 
-def generate_arrival_distribution(lambd: float, total_time: int, goal_floor: int = None) -> list:
+def generate_arrival_distribution(lambd: float, 
+                                  total_time: int, 
+                                  floor: int,
+                                  goal_floor: int = None,
+                                  max_floor: int = None,
+                                  rng: np.random.Generator = None,
+                                  ) -> list:
     """
     Generate a list of random arrival times based on a Poisson distribution.
 
-    :param lambd: The rate (lambda) parameter for the Poisson distribution.
+    :param lambd: The lambda term for the Poisson distribution.
     :param total_time: The total time period over which to generate arrivals.
+    :param floor: The floor number.
+    :param goal_floor: The goal floor for the passengers (if specified).
+    :param max_floor: The maximum floor number (if specified).
+    :param seed: Random seed for reproducibility.
+    
     :return: A list of random arrival times.
     """
     person_list = []
@@ -13,15 +24,16 @@ def generate_arrival_distribution(lambd: float, total_time: int, goal_floor: int
     
     for t in range(total_time):
         # Draw the number of people arriving at time t from a Poisson distribution
-        num_new = np.random.poisson(lambd)
+        num_new = rng.poisson(lambd)
         
-        for i in range(num_new):
-            person = Passenger(_id=person_id, 
+        for _ in range(num_new):
+            person = Passenger(_id=f"{floor}_{person_id}", 
                                arrival_time=t, 
-                               goal_floor=goal_floor if goal_floor is not None else np.random.randint(0, 4))
+                               goal_floor=goal_floor if goal_floor is not None else np.random.randint(0, max_floor))
             person_list.append(person)
             person_id += 1
-    
+
+    #print(f"Generated {len(person_list)} arrivals on floor {floor} with lambda={lambd}")
     return person_list
 
 
@@ -124,7 +136,6 @@ class FloorQueue:
         for time in self.arrivals.keys():
             if len(self.arrivals[time]) > self.max_arrivals:
                 self.arrivals[time] = self.arrivals[time][:self.max_arrivals]
-                print("POPPED ELEMENTS")
                 
     def update_waitings(self):
         """

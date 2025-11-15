@@ -1,0 +1,19 @@
+horizon: 200 #200
+timestep: 1
+
+taxi:
+  fickle_prob: 0.15
+  spawn_prob: 0.2
+  dropoff_reward: 20
+  step_reward: -1
+  illegal_reward: -10
+
+  n_rows: 5
+  n_cols: 5
+  locations:
+    - [0, 0]
+    - [0, 4]
+    - [4, 0]
+    - [4, 3]
+    - [-1, -1] # inside taxi
+    - [-2, -2] # not present
