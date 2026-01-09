@@ -147,7 +147,7 @@ class TaxiEnv(Env):
 
     ## References
     <a id="taxi_ref"></a>[1] T. G. Dietterich, “Hierarchical Reinforcement Learning with the MAXQ Value Function Decomposition,”
-    Journal of Artificial Intelligence Research, vol. 13, pp. 227–303, Nov. 2000, doi: 10.1613/jair.639.
+    Journal of Artificial Intelligence Research, vol. 13, pp. 227-303, Nov. 2000, doi: 10.1613/jair.639.
 
     ## Version History
     * v3: Map Correction + Cleaner Domain Description, v0.25.0 action masking added to the reset and step information
@@ -206,50 +206,72 @@ class TaxiEnv(Env):
 
         return new_pass_idx, new_reward, new_terminated
     
-    def _dry_transitions(self, row, col, pass_idx, dest_idx, action):
+    def _dry_transitions(self, row, col, pass_idx, dest_idx, traffic, action):
         """
         Computes the next action for a state (row, col, pass_idx, dest_idx) and action.
         """
         taxi_loc = (row, col)
-        new_row, new_col, new_pass_idx = row, col, pass_idx
+        new_row, new_col, new_pass_idx, new_dest_idx = row, col, pass_idx, dest_idx
         reward = self._step_reward
         dest_reached = False
 
-        if action == 0:
-            new_row = min(row + 1, self.max_row)
-        elif action == 1:
-            new_row = max(row - 1, 0)
-        if action == 2 and self.desc[1 + row, 2 * col + 2] == b":":
-            new_col = min(col + 1, self.max_col)
-        elif action == 3 and self.desc[1 + row, 2 * col] == b":":
-            new_col = max(col - 1, 0)
+        is_blocked = False
+        if taxi_loc in self.traffic_locs:
+            traffic_idx = self.traffic_locs.index(taxi_loc)
+            if traffic[traffic_idx] == 1:
+                is_blocked = True
+        
+        if not is_blocked and action < 4:
+            if action == 0: # south
+                new_row = min(row + 1, self.max_row)
+            elif action == 1: # north
+                new_row = max(row - 1, 0)
+            if action == 2 and self.desc[1 + row, 2 * col + 2] == b":": # east
+                new_col = min(col + 1, self.max_col)
+            elif action == 3 and self.desc[1 + row, 2 * col] == b":": # west
+                new_col = max(col - 1, 0)
+        
         elif action == 4:  # pickup
             new_pass_idx, reward = self._pickup(taxi_loc, new_pass_idx)
         elif action == 5:  # dropoff
-            new_pass_idx, reward, dest_reached = self._dropoff(taxi_loc, new_pass_idx, dest_idx)
+            _, reward, dest_reached = self._dropoff(taxi_loc, new_pass_idx, dest_idx)
+            if dest_reached:
+                new_pass_idx, new_dest_idx = self._spawn_new_passenger(self.rng)
         
-        return new_row, new_col, new_pass_idx, dest_idx, reward, dest_reached
+        new_traffic = traffic   # The update of traffic happens outside (I need rng)
+        return new_row, new_col, new_pass_idx, new_dest_idx, new_traffic, reward, dest_reached
 
-    def _ctrl_transitions(self, row, col, pass_idx, action):
+    def _ctrl_transitions(self, row, col, pass_idx, dest_idx, traffic, action):
         """
         Computes the next action for a state (row, col, pass_idx) and action.
         """
-        new_row, new_col, new_pass_idx = row, col, pass_idx
+        taxi_loc = (row, col)
+        new_row, new_col, new_pass_idx, new_dest_idx = row, col, pass_idx, dest_idx
 
-        if action == 0: # south
-            new_row = min(row + 1, self.max_row)
-        elif action == 1: # north
-            new_row = max(row - 1, 0)
-        if action == 2 and self.desc[1 + row, 2 * col + 2] == b":": # east
-            new_col = min(col + 1, self.max_col)
-        elif action == 3 and self.desc[1 + row, 2 * col] == b":": # west
-            new_col = max(col - 1, 0)
+        is_blocked = False
+        if taxi_loc in self.traffic_locs:
+            traffic_idx = self.traffic_locs.index(taxi_loc)
+            if traffic[traffic_idx] == 1:
+                is_blocked = True
+        
+        if not is_blocked and action < 4:
+            if action == 0: # south
+                new_row = min(row + 1, self.max_row)
+            elif action == 1: # north
+                new_row = max(row - 1, 0)
+            if action == 2 and self.desc[1 + row, 2 * col + 2] == b":": # east
+                new_col = min(col + 1, self.max_col)
+            elif action == 3 and self.desc[1 + row, 2 * col] == b":": # west
+                new_col = max(col - 1, 0)
+                
         elif action == 4:  # pickup
             new_pass_idx, _ = self._pickup((row, col), new_pass_idx)
-        # Dropoff action is ignored in controllable transitions
-        
-        next_state = [new_row, new_col, new_pass_idx]
-
+        elif action == 5:  # dropoff
+            _, _, dest_reached = self._dropoff((row, col), new_pass_idx, new_dest_idx)
+            if dest_reached:
+                new_pass_idx, new_dest_idx = self._spawn_new_passenger(self.rng)
+                    
+        next_state = [new_row, new_col, new_pass_idx, new_dest_idx]
         return [next_state], [1.0]
 
     def reward_from_transition(self, state: dict, action: int):
@@ -259,16 +281,15 @@ class TaxiEnv(Env):
         Args:
             state (dict): The state of the environment.
             action (int): The action taken by the agent.
-        """
-        return self._dry_transitions(**state, action=action)[4]
+        """ 
+        return self._dry_transitions(**state, action=action)[5]
     
     def _spawn_new_passenger(self, rng):
-        do_spawn = rng.binomial(1, self.spawn_prob)
-        if do_spawn:
-            pickup, dropoff = rng.choice(4, size=2, replace=False)
-            return pickup, dropoff
-        else:
-            return 5, 4
+        pickup, dropoff = rng.choice(4, size=2, replace=False)
+        return pickup, dropoff
+    
+    def _get_traffic(self, rng):
+        return rng.binomial(1, self._traffic_prob, size=len(self.traffic_locs))
 
     def __init__(self, settings: dict, seed: int = None, **kwargs):
         super().__init__()
@@ -278,6 +299,7 @@ class TaxiEnv(Env):
         # Define locations and colors
         self.locs = [(0, 0), (0, 4), (4, 0), (4, 3)]
         self.locs_colors = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (0, 0, 255)]
+        self.traffic_locs = [(2, 1), (2, 2), (2, 3)]
         
         num_actions = 6
         num_rows = 5
@@ -294,8 +316,10 @@ class TaxiEnv(Env):
         self.observation_space = spaces.Dict({
             'row': spaces.Discrete(num_rows),
             'col': spaces.Discrete(num_columns),
-            'pass_idx': spaces.Discrete(len(self.locs) + 2),  # 4 locations + in taxi + not present
-            'dest_idx': spaces.Discrete(len(self.locs) + 1)   # 4 possible destinations + not present
+            'pass_idx': spaces.Discrete(len(self.locs) + 1),  # 4 locations + in taxi
+            'dest_idx': spaces.Discrete(len(self.locs)),  # 4 possible destinations
+            'traffic': spaces.MultiDiscrete([2] * len(self.traffic_locs), 
+                                            start=[0] * len(self.traffic_locs)) # traffic at each location (0 or 1)
         })
         
         # Timing options
@@ -304,14 +328,11 @@ class TaxiEnv(Env):
         self.rng = np.random.default_rng(seed)
         self.rng_eval = None
         
-        # Internal bookkeeping
-        self.fickle_prob = settings['fickle_prob']
-        self.spawn_prob = settings['spawn_prob']
-        self.fickle_step = None
+        # Traffic 
+        self._traffic_prob = settings.get('traffic_prob', 0.1)
         
         # Analysis
         self._delivered_passengers = 0
-        self._not_available_passengers = 0
 
         self.render_mode = kwargs['render_mode'] if 'render_mode' in kwargs else None
         
@@ -332,22 +353,21 @@ class TaxiEnv(Env):
         self.background_img = None
     
     def get_space_vars(self):
-        return ['row', 'col', 'pass_idx', 'dest_idx']
+        return ['row', 'col', 'pass_idx', 'dest_idx', 'traffic']
     
     def get_controllables(self):
-        return ['row', 'col', 'pass_idx']
+        return ['row', 'col', 'pass_idx', 'dest_idx']
     
     def get_uncontrollables(self):
-        return ['dest_idx']
+        return ['traffic']
     
     def get_unctrl_obs(self, obs):
-        return {'dest_idx': obs['dest_idx']}
+        return {'traffic': obs['traffic']}
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
         
         self._delivered_passengers = 0
-        self._not_available_passengers = 0
         
         self.time_step = 0
         rng = self.rng
@@ -362,9 +382,10 @@ class TaxiEnv(Env):
         taxi_col = rng.integers(0, 5)
         
         pass_idx, dest_idx = self._spawn_new_passenger(rng)
-        # fickle steps for all the episode
-        self.fickle_step = [rng.binomial(1, self.fickle_prob) for _ in range(self.horizon)]
-
+        
+        # traffic steps for all the episode
+        traffic = self._get_traffic(rng)
+        
         self.lastaction = None
         self.taxi_orientation = 0   
         
@@ -372,7 +393,8 @@ class TaxiEnv(Env):
             'row': taxi_row,
             'col': taxi_col,
             'pass_idx': pass_idx,
-            'dest_idx': dest_idx
+            'dest_idx': dest_idx,
+            'traffic': traffic
         }
 
         if self.render_mode == "human":
@@ -381,11 +403,11 @@ class TaxiEnv(Env):
         return self._state, {}
 
     def step(self, action: int):
-        row , col, pass_idx, dest_idx = self._state.values()
+        row , col, pass_idx, dest_idx, traffic = self._state.values()
         
-        new_taxi_row, new_taxi_col, new_pass_idx, new_dest_idx, reward, dest_reached = self._dry_transitions(
-            row, col, pass_idx, dest_idx, action)
-
+        new_taxi_row, new_taxi_col, new_pass_idx, new_dest_idx, new_traffic, reward, dest_reached = self._dry_transitions(
+            row, col, pass_idx, dest_idx, traffic, action)
+        
         self.lastaction = action
         self.time_step += 1
         rng = self.rng if self.rng_eval is None else self.rng_eval
@@ -395,33 +417,21 @@ class TaxiEnv(Env):
         # Analysis counters
         if dest_reached:
             self._delivered_passengers += 1
-        if pass_idx == 5:
-            self._not_available_passengers += 1
         
-        if not terminated:    
-            # Spawn new passenger if destination reached
-            if dest_reached or pass_idx == 5:
-                new_pass_idx, new_dest_idx = self._spawn_new_passenger(rng)
-            else:    
-                # Fickle passenger logic
-                if self.fickle_step[self.time_step] == 1 and pass_idx < 5:
-                    new_dest_idx = rng.choice([i for i in range(4) if i != new_dest_idx and i != pass_idx])
-        
-        assert(new_pass_idx == 5 if new_dest_idx == 4 else True), "Inconsistent passenger and destination indices after step."
-        assert(new_dest_idx == 4 if new_pass_idx == 5 else True), "Inconsistent passenger and destination indices after step."
+        new_traffic = self._get_traffic(rng)
         
         self._state = {
             'row': new_taxi_row,
             'col': new_taxi_col,
             'pass_idx': new_pass_idx,
-            'dest_idx': new_dest_idx
+            'dest_idx': new_dest_idx,
+            'traffic': new_traffic
         }
-
+        
         if self.render_mode == "human":
             self.render()
             
-        info = {'delivered_passengers': self._delivered_passengers, 
-                'not_available_passengers': self._not_available_passengers}
+        info = {'delivered_passengers': self._delivered_passengers}
 
         return self._state, reward, terminated, False, info
     
@@ -537,8 +547,15 @@ class TaxiEnv(Env):
             color_cell.fill(color)
             loc = self.get_surf_loc(cell)
             self.window.blit(color_cell, (loc[0], loc[1] + 10))
+            
+        for cell in self.traffic_locs:
+            color_cell = pygame.Surface(self.cell_size)
+            color_cell.set_alpha(128)
+            color_cell.fill((128, 0, 128))
+            loc = self.get_surf_loc(cell)
+            self.window.blit(color_cell, (loc[0], loc[1] + 10))
 
-        taxi_row, taxi_col, pass_idx, dest_idx = self._state.values()
+        taxi_row, taxi_col, pass_idx, dest_idx, traffic = self._state.values()
 
         if pass_idx < 4:
             self.window.blit(self.passenger_img, self.get_surf_loc(self.locs[pass_idx]))

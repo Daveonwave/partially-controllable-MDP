@@ -3,8 +3,7 @@ from tqdm.rich import tqdm, trange
 import numpy as np
 import json
 import numpy as np
-from pcmdp.elevator.elevator_vecEnv import FunctionalElevatorEnv
-from pcmdp.taxi.taxi_vecEnv import FunctionalTaxiEnv
+from pcmdp import FunctionalElevatorEnv, FunctionalTaxiEnv, FunctionalTradingEnv, FunctionalTaxiTrafficEnv
 from algo.utils import *
 from algo.evaluation import validation_step
 
@@ -41,18 +40,23 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
     unctrl_vars = env.unwrapped.get_uncontrollables()
     
     # Functional environment for vectorized operations
-    if args['env'] == 'elevator':
-        vec_env = FunctionalElevatorEnv(settings=settings)
-    elif args['env'] == 'taxi':
-        vec_env = FunctionalTaxiEnv(settings=settings)
+    if args['env_id'] == 'elevator-v0':
+        func_env = FunctionalElevatorEnv(settings=settings)
+    elif args['env_id'] == 'taxi-v0':
+        func_env = FunctionalTaxiEnv(num_states=S, num_actions=A)
+    elif args['env_id'] == 'taxi-traffic-v0':
+        func_env = FunctionalTaxiTrafficEnv(num_states=S, num_actions=A)
+    elif args['env_id'] == 'trading-v0':
+        func_env = FunctionalTradingEnv(settings=settings)
     else:
-        raise ValueError("Unsupported environment for exogenous Q-Learning.")
+        raise ValueError("Unsupported environment for ExAQ.")
         
-    for episode in trange(n_episodes):
+    for episode in trange(n_episodes, desc="Training ExAQ"):
         # Validation step every 1000 episodes during training
         if episode % args['eval_every'] == 0 and episode > 0:
             best_eval_reward, best_eval_episode, eval_counter = validation_step(
                 env_name=args['env'],
+                env_id=args['env_id'],
                 eval_params=eval_params,
                 episode=episode, 
                 eval_episodes=args['eval_episodes'],
@@ -67,6 +71,7 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
                 best_eval_episode=best_eval_episode,
                 writer=writer,
                 train_seed=seed,
+                dest_path=dest_path,
                 eval_seed=eval_seed
                 )
 
@@ -77,8 +82,11 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
         dataset = {key: [] for key in unctrl_vars}
         exog_count = 0
         
-        obs, _ = env.reset()
+        obs, _ = env.reset()   
+        obs_key = obs_to_key(obs, keys, multipliers)     
         exog_obs = env.unwrapped.get_unctrl_obs(obs)
+        
+        # Initial uncontrollable observation
         for key in unctrl_vars:
             dataset[key].append(exog_obs[key])
         exog_count += 1
@@ -86,22 +94,27 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
         done = False
         while not done:
             # Random sampling the action just to move the environment forward
-            action = env.action_space.sample()  
+            # action = rng.integers(A)
+            if rng.uniform() < epsilon:
+                 action = rng.integers(A)    # Explore action space
+            else:
+                 action = np.argmax(Q[obs_key, :])
             new_obs, _, terminated, truncated, _ = env.step(action) 
+            new_obs_key = obs_to_key(new_obs, keys, multipliers)
+            
             exog_obs = env.unwrapped.get_unctrl_obs(new_obs)
             for key in unctrl_vars:
                 dataset[key].append(exog_obs[key])
             exog_count += 1
             done = terminated or truncated
+            
+            obs, obs_key = new_obs, new_obs_key
         
         # Now we have a dataset of uncontrollable observations
         vec_state = controllable_space.copy()
         batch_size = len(controllable_space[list(controllable_space.keys())[0]])
         params = {'batch_size': batch_size, **settings}
         cumulated_rewards = np.zeros(batch_size)
-        
-        # The initial state is not needed in this case, as we will use the uncontrollable observations directly
-        #_ = vec_env.initial(rng=None, params=params)
         
         # NOTE: the indices are used to index the Q-table. Instead, vec_state and
         # vec_action use a subset of the entire state space, which is the controllable part.
@@ -112,33 +125,33 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
             next_unctrl_obs = {key: dataset[key][i + 1] for key in unctrl_vars}
             
             # For each controllable state, we add the current uncontrollable observation
-            vec_state = compose_vec_state(vec_state, unctrl_obs, batch_size)        
+            vec_state = compose_vec_state(vec_state, unctrl_obs, batch_size)      
             indices = flatten_state(vec_state, keys, multipliers)
 
             # Choose action based on epsilon-greedy policy
             if rng.uniform() < epsilon:
-                #vec_action = np.array([rng_action.integers(0, A)] * batch_size)  # Explore action space
-                vec_action = np.array([rng.integers(0, A)] * batch_size)  # Explore action space
+                vec_action = np.array([rng.integers(A)] * batch_size)  # Explore action space
             else:
                 vec_action = np.argmax(Q[indices, :], axis=1)
                 
             # Get the next state from the environment
-            next_vec_state = vec_env.transition(state=vec_state, action=vec_action, rng=None, params=params)
+            next_vec_state = func_env.transition(state=vec_state, action=vec_action, rng=rng, params=params)
             next_vec_state = compose_vec_state(next_vec_state, next_unctrl_obs, batch_size)
-            
+                        
             # Calculate rewards
-            rewards = vec_env.reward(state=vec_state, action=vec_action, next_state=next_vec_state, rng=None, params=params)
+            rewards = func_env.reward(state=vec_state, action=vec_action, next_state=next_vec_state, rng=None, params=params)
             cumulated_rewards += rewards
+            
+            #print(i, next_vec_state)
+            #print(key_to_obs(16004, env, keys, multipliers))
+            #print(dataset['traffic'][i], print(dataset['traffic'][i+1]))
             
             # Q-update
             next_indices = flatten_state(next_vec_state, keys, multipliers)
             best_next_actions = np.argmax(Q[next_indices, :], axis=1)
             td_targets = rewards + gamma * Q[next_indices, best_next_actions] 
-            Q[indices, vec_action] += alpha * (td_targets - Q[indices, vec_action])
+            Q[indices, vec_action] += alpha * (td_targets - Q[indices, vec_action])   
         
-            # I don't have to move to the next state, as the next uncontrollable observation will be used in the next iteration            
-            #vec_state = next_vec_state
-
         writer.add_scalar('Training/MeanEpisodeReward', np.mean(cumulated_rewards), episode)
         writer.add_scalar('Training/MedianEpisodeReward', np.median(cumulated_rewards), episode)
         writer.add_scalar('Training/TD_Error', np.mean(td_targets - Q[indices, vec_action]), episode)
@@ -148,7 +161,19 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
         writer.add_histogram('Q/Values', Q.flatten(), episode)
         
         # Decay epsilon
-        epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        if args['decay_type'] == 'linear':
+            epsilon -= (1.0 - epsilon_min) / (n_episodes)
+            epsilon = max(epsilon_min, epsilon)
+        elif args['decay_type'] == 'exponential':
+            epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        elif args['decay_type'] == 'mixed': # linear first half, exponential second half
+            if episode < n_episodes // 2:
+                epsilon -= (1.0 - epsilon_min) / (n_episodes)
+                epsilon = max(epsilon_min, epsilon)
+            else:
+                epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        else:
+            raise ValueError(f"Unsupported decay type: {args['decay_type']}")
         writer.add_scalar('Exploration/Epsilon', epsilon, episode)
 
     os.makedirs(f"{dest_path}/logs/results/{out_path}/{seed}/", exist_ok=True)

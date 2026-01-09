@@ -8,7 +8,7 @@ elevator:
 floors:
   max_arrivals: 2
   max_queue_length: 2
-  lambda_min: 0.1 #0.01
+  lambda_min: 0.01 #0.01
   lambda_max: 0.2 #0.1
 
 horizon: 300

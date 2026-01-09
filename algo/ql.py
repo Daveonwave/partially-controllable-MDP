@@ -39,11 +39,11 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
     Q = np.zeros((S, A))
     
     for episode in trange(n_episodes, desc="Training Q-Learning"):
-        
         # Validation step every 1000 episodes during training
         if episode % args['eval_every'] == 0 and episode > 0:
             best_eval_reward, best_eval_episode, eval_counter = validation_step(
                 env_name=args['env'],
+                env_id=args['env_id'],
                 eval_params=eval_params,
                 episode=episode, 
                 eval_episodes=args['eval_episodes'],
@@ -73,13 +73,16 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
         
         while not done:
             if rng.uniform() < epsilon:
-                action = env.action_space.sample()  # Explore action space
+                action = rng.integers(A)  # Explore action space
             else:
                 action = np.argmax(Q[obs_key, :])     # Exploit learned values
             
-            next_obs, reward, terminated, truncated, _ = env.step(action) 
+            #print(f"Episode {episode}, Obs: {obs}, Action: {action}")
+            
+            next_obs, reward, terminated, truncated, info = env.step(action) 
             next_obs_key = obs_to_key(next_obs, keys, multipliers)
 
+            #print(f"Episode {episode}, Next Obs: {next_obs}, Reward: {reward}, Terminated: {terminated}, Truncated: {truncated}")
             cumulated_reward += reward
             done = terminated or truncated
             
@@ -99,7 +102,19 @@ def train(env, args, eval_params, seed=None, model_file=None, settings=None):
         writer.add_histogram('Q/Values', Q.flatten(), episode)
         
         # Decay epsilon
-        epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        if args['decay_type'] == 'linear':
+            epsilon -= (1.0 - epsilon_min) / (n_episodes)
+            epsilon = max(epsilon_min, epsilon)
+        elif args['decay_type'] == 'exponential':
+            epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        elif args['decay_type'] == 'mixed': # linear first half, exponential second half
+            if episode < n_episodes // 2:
+                epsilon -= (1.0 - epsilon_min) / (n_episodes)
+                epsilon = max(epsilon_min, epsilon)
+            else:
+                epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        else:
+            raise ValueError(f"Unsupported decay type: {args['decay_type']}")
         writer.add_scalar('Exploration/Epsilon', epsilon, episode)
 
     os.makedirs(f"{dest_path}/logs/results/{out_path}/{seed}/", exist_ok=True)

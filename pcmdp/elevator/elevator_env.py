@@ -222,7 +222,7 @@ class ElevatorEnv(Env):
         if self.init_elevator_pos is not None:
             self._elevator.reset(initial_position=self.init_elevator_pos)
         else:
-            self._elevator.reset(initial_position=self.observation_space['pos'].sample() * self._elevator.movement_speed)
+            self._elevator.reset(initial_position=rng.integers(self.observation_space['pos'].n) * self._elevator.movement_speed)
         
         for queue in self._elevator.queues:
             if queue.floor != self._goal_floor:

@@ -17,9 +17,11 @@ class FunctionalElevatorEnv(FuncEnv):
         max_capacity = settings['max_capacity']
         max_queue_length = settings['max_queue_length']
         max_arrivals = settings['max_arrivals']
+        movement_speed = settings['movement_speed']
+        floor_height = settings['floor_height']
 
         self.observation_space = spaces.Dict({
-            'pos': spaces.Discrete(int(settings['floor_height'] * max_floor / settings['movement_speed']) + 1),
+            'pos': spaces.Discrete(int(floor_height * max_floor / movement_speed) + 1),
             'n_pass': spaces.Discrete(max_capacity + 1),
             'queues': spaces.MultiDiscrete(np.full(max_floor - min_floor, max_queue_length + 1)),
             'arrivals': spaces.MultiDiscrete(np.full(max_floor - min_floor, max_arrivals + 1))
@@ -41,13 +43,13 @@ class FunctionalElevatorEnv(FuncEnv):
 
     def transition(self, state, action, rng, params=None):   
         # Copy current state
-        state = {
+        next_state = {
             'pos': np.copy(state['pos']),
             'n_pass': np.copy(state['n_pass']),
             'queues': np.copy(state['queues']),
             'arrivals': np.copy(state['arrivals']),
         }
-                    
+                            
         # Move elevator according to action: 0=down, 1=stay, 2=up
         vertical_pos = state['pos'] * params['movement_speed'] / params['floor_height']  # Convert to vertical position in terms of floors   
         
@@ -61,26 +63,31 @@ class FunctionalElevatorEnv(FuncEnv):
         open_at_ground_floor_indices = np.intersect1d(open_doors_indices, np.where(vertical_pos == 0)[0])  # Indices where elevator is at ground floor
         
         # Update passengers at ground floor
-        state['n_pass'][open_at_ground_floor_indices] = np.zeros_like(state['n_pass'][open_at_ground_floor_indices])
+        next_state['n_pass'][open_at_ground_floor_indices] = 0
         
         # Update passengers and queues at upper floors
-        floors = vertical_pos[open_at_upper_floors_indices].astype(int)  # Get the floor indices where doors are opened
-        
-        # Compute loaded passengers at upper floors
-        loaded_passengers = np.clip(
-            state['n_pass'][open_at_upper_floors_indices] + state['queues'][open_at_upper_floors_indices, floors - 1], 
-            0, params['max_capacity'])
-        # Update queue at upper floors
-        state['queues'][open_at_upper_floors_indices, floors - 1] = state['queues'][open_at_upper_floors_indices, floors - 1] - (loaded_passengers - state['n_pass'][open_at_upper_floors_indices])  
-        state['n_pass'][open_at_upper_floors_indices] = loaded_passengers
-        
+        if len(open_at_upper_floors_indices) > 0:
+            floors = vertical_pos[open_at_upper_floors_indices].astype(int)  # Get the floor indices where doors are opened
+            
+            current_pass = state['n_pass'][open_at_upper_floors_indices]
+            waiting_pass = state['queues'][open_at_upper_floors_indices, floors - 1]
+            
+            # Compute loaded passengers at upper floors
+            loaded_passengers = np.clip(current_pass + waiting_pass, 0, params['max_capacity'])
+            boarded_passengers = loaded_passengers - current_pass
+            
+            # Update queue at upper floors
+            next_state['n_pass'][open_at_upper_floors_indices] = loaded_passengers
+            next_state['queues'][open_at_upper_floors_indices, floors - 1] -= boarded_passengers
+            
         # CASE 2: THE ELEVATOR MOVES UP OR DOWN
-        state['pos'][move_up_indices] = np.clip(state['pos'][move_up_indices] + 1, 0, params['max_floor'] * params['floor_height'] / params['movement_speed'])  # Move up
-        state['pos'][move_down_indices] = np.clip(state['pos'][move_down_indices] - 1, 0, params['max_floor'] * params['floor_height'] / params['movement_speed'])  # Move up
-        
+        max_pos = params['max_floor'] * params['floor_height'] / params['movement_speed']
+        next_state['pos'][move_up_indices] = np.clip(state['pos'][move_up_indices] + 1, 0, max_pos)  # Move up
+        next_state['pos'][move_down_indices] = np.clip(state['pos'][move_down_indices] - 1, 0, max_pos)  # Move up
+            
         # Update queues and arrivals
-        state['queues'] = np.clip(state['queues'] + state['arrivals'], 0, params['max_queue_length']) 
-        return state
+        next_state['queues'] = np.clip(next_state['queues'] + state['arrivals'], 0, params['max_queue_length']) 
+        return next_state
 
     def observation(self, state, rng, params=None):
         # Return the current state as observation
@@ -116,4 +123,4 @@ class FunctionalElevatorEnv(FuncEnv):
         
     def terminal(self, state, rng, params=None):
         # Done when step_count exceeds duration
-        return True
+        return np.zeros(state.shape[0], dtype=bool)

@@ -27,15 +27,14 @@ def choose_action(Q, state, epsilon=0.0):
 
 def render_taxi(settings, Q, episodes=3, delay=0.5, epsilon=0.0, render_mode="human"):
     """Render the Taxi-v3 environment using the learned Q-table."""
-    env = gym.make("pcmdp/taxi-v0", render_mode=render_mode, **{'settings': env_settings})
+    env = gym.make("pcmdp/taxi-traffic-v0", render_mode=render_mode, **{'settings': env_settings})
     
     keys, multipliers = build_state_index_map(env)
-    get_indices = lambda obs, keys, multipliers, _no_batch: obs_to_key(obs, keys, multipliers, _no_batch)
+    get_indices = lambda obs, keys, multipliers: obs_to_key(obs, keys, multipliers)
 
     for ep in range(episodes):
         obs, _ = env.reset()
-        obs_key = get_indices(obs, keys, multipliers, _no_batch=True)
-
+        obs_key = get_indices(obs, keys, multipliers)
         done = False
         cumulated_reward = 0
         steps = 0
@@ -43,7 +42,7 @@ def render_taxi(settings, Q, episodes=3, delay=0.5, epsilon=0.0, render_mode="hu
         while not done:
             action = choose_action(Q, obs_key, epsilon)
             next_obs, reward, terminated, truncated, _ = env.step(action)
-            new_obs_key = get_indices(next_obs, keys, multipliers, _no_batch=True)
+            new_obs_key = get_indices(next_obs, keys, multipliers)
             cumulated_reward += reward
             
 
@@ -52,7 +51,7 @@ def render_taxi(settings, Q, episodes=3, delay=0.5, epsilon=0.0, render_mode="hu
                 frame = env.render()
 
                 # Add overlay info via pygame
-                pygame.display.set_caption(f"Taxi-v0 | Ep {ep+1} | Step {steps} | Reward {reward}")
+                pygame.display.set_caption(f"Taxi-traffic-v0 | Ep {ep+1} | Step {steps} | Reward {reward}")
                 screen = pygame.display.get_surface()
                 if screen is not None:
                     font = pygame.font.Font(None, 28)

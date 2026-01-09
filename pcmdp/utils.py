@@ -50,7 +50,24 @@ def parameter_generator(world_file: str, **kwargs) -> dict:
         params['n_rows'] = kwargs.get('n_rows', world_settings['taxi']['n_rows'])
         params['n_cols'] = kwargs.get('n_cols', world_settings['taxi']['n_cols'])
         params['locations'] = kwargs.get('locations', world_settings['taxi']['locations'])
-        
+        params['traffic_locs'] = kwargs.get('traffic_locs', world_settings['taxi']['traffic_locs'])
+        params['traffic_prob'] = kwargs.get('traffic_prob', world_settings['taxi']['traffic_prob'])
+    
+    # Trading settings
+    elif 'trading' in world_settings:
+        params['time_intervals'] = kwargs.get('time_intervals', world_settings['trading']['time_intervals'])
+        params['max_amount'] = kwargs.get('max_amount', world_settings['trading']['max_amount'])
+        params['initial_price'] = kwargs.get('initial_price', world_settings['trading']['initial_price'])
+        params['min_price'] = kwargs.get('min_price', world_settings['trading']['min_price'])
+        params['max_price'] = kwargs.get('max_price', world_settings['trading']['max_price'])
+        params['granularity'] = kwargs.get('granularity', world_settings['trading']['granularity'])
+        params['transaction_cost'] = kwargs.get('transaction_cost', world_settings['trading']['transaction_cost'])
+        params['permanent_impact'] = kwargs.get('permanent_impact', world_settings['trading']['permanent_impact'])
+        params['temporary_impact'] = kwargs.get('temporary_impact', world_settings['trading']['temporary_impact'])
+        params['risk_aversion'] = kwargs.get('risk_aversion', world_settings['trading']['risk_aversion'])
+        params['volatility'] = kwargs.get('volatility', world_settings['trading']['volatility'])
+        params['drift'] = kwargs.get('drift', world_settings['trading']['drift'])
+    
     else:
         raise ValueError("Unsupported environment settings in the world file.")
     

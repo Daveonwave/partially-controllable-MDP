@@ -3,7 +3,7 @@ timestep: 1
 
 taxi:
   fickle_prob: 0.15
-  spawn_prob: 0.2
+  spawn_prob: 0.3
   dropoff_reward: 20
   step_reward: -1
   illegal_reward: -10
@@ -17,3 +17,11 @@ taxi:
     - [4, 3]
     - [-1, -1] # inside taxi
     - [-2, -2] # not present
+
+  traffic_prob: 0.3
+  traffic_locs:
+    #- [2, 0]
+    - [2, 1]
+    - [2, 2]
+    - [2, 3]
+    #- [2, 4]

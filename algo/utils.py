@@ -24,7 +24,7 @@ def init_writer(exp_name, args, seed, dest_folder):
 
     # Log hyperparameters as text for full readability
     writer.add_text("config/parameters", json.dumps(args, indent=4))
-    with open(os.path.join(out_path, "config.json"), "w") as f:
+    with open(os.path.join(dest_folder, "logs/tensorboard", exp_name, time_identifier, "config.json"), "w") as f:
         json.dump(args, f, indent=4)
 
     return writer, os.path.join(exp_name, time_identifier)
@@ -103,7 +103,7 @@ def build_state_index_map(env, keys=None):
     return keys, multipliers
 
 
-def obs_to_key(obs, keys=None, multipliers=None, no_batch=False):
+def obs_to_key(obs, keys=None, multipliers=None):
     """
     Convert observation to flat Q-table index.
     
@@ -277,8 +277,8 @@ def compose_vec_state(ctrl_obs, unctrl_obs, batch_size):
     
     # Add uncontrollable observations
     for key in unctrl_obs:
-        size = unctrl_obs[key].shape[0] if isinstance(unctrl_obs[key], np.ndarray) else 1 
-        vec_state[key] = np.full((batch_size, size), unctrl_obs[key], dtype=np.int64)
+        shape = (batch_size, unctrl_obs[key].shape[0]) if isinstance(unctrl_obs[key], np.ndarray) else (batch_size)
+        vec_state[key] = np.full(shape=shape, fill_value=unctrl_obs[key], dtype=np.int64)
     
     return vec_state
 
@@ -303,7 +303,7 @@ def build_ctrl_transition_matrix(env, state_keys, state_multipliers, next_state_
             next_states, probs = env.unwrapped._ctrl_transitions(**{**state, "action": a})
             for sp, prob in zip(next_states, probs):
                 next_ctrl_state = {key: sp[i] for i, key in enumerate(next_state_keys)}
-                next_idx = obs_to_key(next_ctrl_state, keys=next_state_keys, multipliers=next_state_multipliers, no_batch=True)
+                next_idx = obs_to_key(next_ctrl_state, keys=next_state_keys, multipliers=next_state_multipliers)
                 P[s, a, next_idx] += prob
     return P
 

@@ -1,0 +1,27 @@
+python main.py \
+    --env trading \
+    --env_id trading-v0 \
+    --algo ppo \
+    --exp_name "fixedS0noTime" \
+    --dest_folder "/data2/salaorni/pcmdp" \
+    --world "world.yaml" \
+    --num_envs 16 \
+    --gamma 0.999 \
+    --alpha 0.0001 \
+    --eps_clip 0.2 \
+    --ent_coef 0.0 \
+    --vf_coef 0.5 \
+    --gae_lambda 0.95 \
+    --max_grad_norm 0.5 \
+    --num_iterations 2000 \
+    --steps_per_iteration 1000 \
+    --update_epochs 4 \
+    --minibatch_size 512 \
+    --norm_adv \
+    --tol 0.01 \
+    --max_no_improvement 30000 \
+    --eval_episodes 50 \
+    --eval_every 1 \
+    --train_seeds 5 6 7 8 \
+    --eval_seed 1234 \
+    --anneal_lr \
